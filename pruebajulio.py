@@ -239,8 +239,6 @@ mini_ugp = (
     .sum()
     .rename(columns={line_col: 'Categoria', t_col: 'Clientes'})
 )
-# ...existing code...
-
 # Ordenar para que 'Total UGP' siempre esté al final
 if 'Total UGP' in mini_ugp['Categoria'].values:
     mini_ugp_total = mini_ugp[mini_ugp['Categoria'] == 'Total UGP']
@@ -277,7 +275,7 @@ with pd.ExcelWriter('Resultado_distribucion.xlsx',
                       sheet_name='UGP_MES_ANTERIOR')
 
 
-# 3) Distribución proporcional en UGP_MES_ANTERIOR
+# 3) Distribución proporcional in UGP_MES_ANTERIOR
 file_path = 'Resultado_distribucion.xlsx'
 wb = load_workbook(file_path)
 ws = wb['UGP_MES_ANTERIOR']
@@ -444,61 +442,7 @@ def construir_hoja_tabla(file_path: str):
 # Ejecuta
 file_path = "Resultado_distribucion.xlsx"
 df_tabla = construir_hoja_tabla(file_path)
-'''
-# Función para quitar duplicados en la hoja tabla
-def eliminar_duplicados_tabla(file_path):
-    print("🔧 Eliminando duplicados por Concat...")
-    
-    # Leer hoja actual
-    df_tabla = pd.read_excel(file_path, sheet_name='tabla', dtype=str).fillna('')
-    
-    print(f"📊 Filas antes de limpiar: {len(df_tabla)}")
-    
-    # Normalizar campos y convertir cantidad a numérico
-    df_tabla['CO'] = df_tabla['CO'].str.zfill(3)
-    df_tabla['UN'] = df_tabla['UN'].str.zfill(3)
-    df_tabla['CCOS'] = df_tabla['CCOS'].str.zfill(6)
-    df_tabla['Cant'] = pd.to_numeric(df_tabla['Cant'], errors='coerce').fillna(0)
-    
-    # Si no existe la columna Concat, la creamos
-    if 'Concat' not in df_tabla.columns:
-        df_tabla['Concat'] = df_tabla['CO'] + df_tabla['UN'] + df_tabla['CCOS']
-    
-    # Mostrar duplicados antes de agrupar
-    duplicados = df_tabla[df_tabla.duplicated(subset=['Concat'], keep=False)]
-    if len(duplicados) > 0:
-        print(f"🔍 Se encontraron {len(duplicados)} registros duplicados:")
-        print(duplicados[['Concat', 'UGP', 'CO', 'UN', 'CCOS', 'Cant']].to_string(index=False))
-    
-    # Agrupar por Concat y sumar cantidades
-    df_tabla_clean = (
-        df_tabla
-        .groupby('Concat', as_index=False)
-        .agg({
-            'UGP': 'first',
-            'CO': 'first',
-            'UN': 'first',
-            'CCOS': 'first',
-            'Cant': 'sum'
-        })
-    )
-    
-    # Reordenar columnas
-    df_tabla_clean = df_tabla_clean[['Concat', 'UGP', 'CO', 'UN', 'CCOS', 'Cant']]
-    
-    print(f"📊 Filas después de limpiar: {len(df_tabla_clean)}")
-    print(f"✂️ Se eliminaron {len(df_tabla) - len(df_tabla_clean)} filas duplicadas")
-    
-    # Guardar hoja limpia
-    with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='replace') as writer:
-        df_tabla_clean.to_excel(writer, sheet_name='tabla', index=False)
-    
-    print(f"✅ Consolidación completa: {len(df_tabla_clean)} filas únicas.")
-    return df_tabla_clean
 
-# Ejecutar eliminación de duplicados
-df_tabla_clean = eliminar_duplicados_tabla(file_path)
-'''
 
 # Y usa directamente el DataFrame leído:
 # Consolidar y eliminar duplicados por UGP, CO, UN, CCOS, sumando Cant
@@ -644,7 +588,7 @@ print("📥 Ejecutando SQL...")
 df_sql = pd.read_sql(query, engine)
 engine.dispose()
 
-# Ordenar columnas manualmente por seguridad (aunque ya salen así por el SELECT)
+# Ordenar columnas manualmente (aunque ya salen así por el SELECT)
 ordered_columns = [
     "f351_id_cia",
     "auxiliar_codigo",
@@ -841,10 +785,14 @@ def crear_hoja_comercio(file_path):
                 aux, co_base, un, ccos_base
             ])
     df_comercio = pd.DataFrame(filas, columns=columnas)
+    
+     # Eliminar filas duplicadas por Auxiliar y todas las columnas
+    df_comercio = df_comercio.drop_duplicates(subset=columnas)
+
     # Guardar en hoja 'Comercio'
     with pd.ExcelWriter(file_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
         df_comercio.to_excel(writer, index=False, sheet_name="Comercio")
-    print(f"✅ Hoja 'Comercio' creada con {len(df_comercio)} filas.")
+    print(f"✅ Hoja 'Comercio' creada con {len(df_comercio)} filas (sin duplicados por Auxiliar).")
 
     def actualizar_porcentaje_comercio(file_path):
         # Leer hoja 'tabla' y asegurar que % Comercio es numérico
@@ -913,5 +861,298 @@ crear_hoja_ciudad("Resultado_distribucion.xlsx")
 
 # Ejecutar la función para crear la hoja Comercio
 crear_hoja_comercio("Resultado_distribucion.xlsx")
+
+# ================================
+# Crear hoja 'General' con ccos_base=660103
+# ================================
+def crear_hoja_general(file_path):
+    # Leer hoja SQL_UN600
+    df_sql = pd.read_excel(file_path, sheet_name="SQL_UN600", dtype=str)
+    df_sql = df_sql.fillna("")
+    auxiliares = df_sql["auxiliar_codigo"].drop_duplicates().tolist()
+    columnas = [
+        "Auxiliar", "Centro de operación base", "Unidad de negocio base", "Auxiliar de centro de costos base",
+        "Auxiliar", "Centro de operación debito", "Unidad de negocio debito", "Auxiliar de centro de costos debito",
+        "Auxiliar", "Centro de operación credito", "Unidad de negocio credito", "Auxiliar de centro de costos credito"
+    ]
+    filas = []
+    co_base = "001"
+    un = "600"
+    ccos_base = "660103"  # Fijo para general
+    cos = [str(i).zfill(3) for i in list(range(1, 20)) if i not in (14, 17)]
+    for aux in auxiliares:
+        # Para cada combinación de débito, para cada CO destino
+        for co_debito in cos + ["020"]:
+            for un_deb, ccos_deb in [
+                ("100", "110101"),
+                ("200", "220101"),
+                ("200", "220102"),
+                ("300", "330101"),
+                ("500", "550101"),
+                ("700", "770101"),
+                ("999", "990101"),
+                ("999", "990102"),
+                ("999", "990103"),
+                ("999", "990201"),
+                ("999", "990202"),
+                ("999", "990203"),
+                ("999", "990204"),
+                ("999", "990301"),
+            ]:
+                # Solo permitir combinaciones con UN_debito == 999 si co_debito == '001'
+                if un_deb == "999" and co_debito != "001":
+                    continue
+                filas.append([
+                    aux, co_base, un, ccos_base,
+                    aux, co_debito, un_deb, ccos_deb,
+                    aux, co_base, un, ccos_base
+                ])
+        # Para CO debito = 020, solo las combinaciones especiales
+        for un_deb, ccos_deb in [
+            ("100", "110101"),
+            ("200", "220101"),
+            ("300", "330101")
+        ]:
+            filas.append([
+                aux, co_base, un, ccos_base,
+                aux, "020", un_deb, ccos_deb,
+                aux, co_base, un, ccos_base
+            ])
+    df_general = pd.DataFrame(filas, columns=columnas)
+    # Guardar en hoja 'General'
+    with pd.ExcelWriter(file_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+        df_general.to_excel(writer, index=False, sheet_name="General")
+    print(f"✅ Hoja 'General' creada con {len(df_general)} filas.")
+
+# Ejecutar la función para crear la hoja General
+crear_hoja_general("Resultado_distribucion.xlsx")
+
+def actualizar_porcentaje_general(file_path):
+    # Leer hoja 'tabla' y asegurar que % Total es numérico
+    df_tabla = pd.read_excel(file_path, sheet_name='tabla', dtype=str).fillna('')
+    if '% Total' in df_tabla.columns:
+        df_tabla['% Total'] = pd.to_numeric(df_tabla['% Total'], errors='coerce')
+    else:
+        df_tabla['% Total'] = 0.0
+
+    # Renombrar columnas para merge
+    df_merge1 = df_tabla[['UGP', 'CO', 'UN', 'CCOS', '% Total']].copy()
+    df_merge2 = df_tabla[['CO', 'UGP', 'UN', 'CCOS', '% Total']].copy()
+
+    # Leer hoja 'General'
+    df_general = pd.read_excel(file_path, sheet_name='General', dtype=str).fillna('')
+
+    # Primera llave: Centro de operación debito != '020'
+    mask1 = df_general['Centro de operación debito'] != '020'
+    df_general1 = df_general[mask1].merge(
+        df_merge1,
+        left_on=['Centro de operación debito', 'Centro de operación debito', 'Unidad de negocio debito', 'Auxiliar de centro de costos debito'],
+        right_on=['UGP', 'CO', 'UN', 'CCOS'],
+        how='left'
+    )
+
+    # Segunda llave: Centro de operación debito == '020'
+    mask2 = df_general['Centro de operación debito'] == '020'
+    df_general2 = df_general[mask2].merge(
+        df_merge2,
+        left_on=['Centro de operación base', 'Centro de operación debito', 'Unidad de negocio debito', 'Auxiliar de centro de costos debito'],
+        right_on=['CO', 'UGP', 'UN', 'CCOS'],
+        how='left'
+    )
+
+    # Unir ambos resultados
+    df_general_actualizado = pd.concat([df_general1, df_general2], ignore_index=True)
+
+    # Actualizar la columna % Total
+    df_general_actualizado['% Total'] = df_general_actualizado['% Total'].fillna(0.0).astype(float)
+
+    # Limpiar columnas extra del merge
+    for col in ['UGP', 'CO', 'UN', 'CCOS']:
+        if col in df_general_actualizado.columns:
+            df_general_actualizado.drop(columns=col, inplace=True)
+
+    # Guardar en la hoja 'General' y formatear la columna % Total como porcentaje
+    from openpyxl.utils.dataframe import dataframe_to_rows
+    wb = load_workbook(file_path)
+    if 'General' in wb.sheetnames:
+        del wb['General']
+    ws = wb.create_sheet('General')
+    for r_idx, row in enumerate(dataframe_to_rows(df_general_actualizado, index=False, header=True), 1):
+        for c_idx, value in enumerate(row, 1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=value)
+            # Formatear % Total como porcentaje con dos decimales
+            if df_general_actualizado.columns[c_idx - 1] == '% Total' and r_idx > 1:
+                cell.number_format = '0.00%'
+    wb.save(file_path)
+    print(f"✅ Hoja 'General' actualizada con columna % Total.")
+
+# Ejecutar la función para actualizar la hoja General con % Total
+actualizar_porcentaje_general("Resultado_distribucion.xlsx")
+
+# ================================
+# Crear hoja 'Propia' con ccos_base=660106
+# ================================
+def crear_hoja_propia(file_path):
+    df_sql = pd.read_excel(file_path, sheet_name="SQL_UN600", dtype=str)
+    df_sql = df_sql.fillna("")
+    auxiliares = df_sql["auxiliar_codigo"].drop_duplicates().tolist()
+    columnas = [
+        "Auxiliar", "Centro de operación base", "Unidad de negocio base", "Auxiliar de centro de costos base",
+        "Auxiliar", "Centro de operación debito", "Unidad de negocio debito", "Auxiliar de centro de costos debito",
+        "Auxiliar", "Centro de operación credito", "Unidad de negocio credito", "Auxiliar de centro de costos credito"
+    ]
+    filas = []
+    co_base = "001"
+    un = "600"
+    ccos_base = "660106"  # Fijo para Propia
+    cos = [str(i).zfill(3) for i in list(range(1, 20)) if i not in (14, 17)]
+    for aux in auxiliares:
+        for co_debito in cos + ["020"]:
+            for un_deb, ccos_deb in [
+                ("100", "110101"),
+                ("200", "220101"),
+                ("200", "220102"),
+                ("300", "330101"),
+                ("500", "550101"),
+                ("700", "770101"),
+                ("999", "990101"),
+                ("999", "990102"),
+                ("999", "990103"),
+                ("999", "990201"),
+                ("999", "990202"),
+                ("999", "990203"),
+                ("999", "990204"),
+                ("999", "990301"),
+            ]:
+                if un_deb == "999" and co_debito != "001":
+                    continue
+                filas.append([
+                    aux, co_base, un, ccos_base,
+                    aux, co_debito, un_deb, ccos_deb,
+                    aux, co_base, un, ccos_base
+                ])
+        for un_deb, ccos_deb in [
+            ("100", "110101"),
+            ("200", "220101"),
+            ("300", "330101")
+        ]:
+            filas.append([
+                aux, co_base, un, ccos_base,
+                aux, "020", un_deb, ccos_deb,
+                aux, co_base, un, ccos_base
+            ])
+    df_propia = pd.DataFrame(filas, columns=columnas)
+    with pd.ExcelWriter(file_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+        df_propia.to_excel(writer, index=False, sheet_name="Propia")
+    print(f"✅ Hoja 'Propia' creada con {len(df_propia)} filas.")
+
+def actualizar_porcentaje_propia(file_path):
+    df_tabla = pd.read_excel(file_path, sheet_name='tabla', dtype=str).fillna('')
+    if '% Cartera Propia' in df_tabla.columns:
+        df_tabla['% Cartera Propia'] = pd.to_numeric(df_tabla['% Cartera Propia'], errors='coerce')
+    else:
+        df_tabla['% Cartera Propia'] = 0.0
+    df_merge1 = df_tabla[['UGP', 'CO', 'UN', 'CCOS', '% Cartera Propia']].copy()
+    df_merge2 = df_tabla[['CO', 'UGP', 'UN', 'CCOS', '% Cartera Propia']].copy()
+    df_propia = pd.read_excel(file_path, sheet_name='Propia', dtype=str).fillna('')
+    mask1 = df_propia['Centro de operación debito'] != '020'
+    df_propia1 = df_propia[mask1].merge(
+        df_merge1,
+        left_on=['Centro de operación debito', 'Centro de operación debito', 'Unidad de negocio debito', 'Auxiliar de centro de costos debito'],
+        right_on=['UGP', 'CO', 'UN', 'CCOS'],
+        how='left'
+    )
+    mask2 = df_propia['Centro de operación debito'] == '020'
+    df_propia2 = df_propia[mask2].merge(
+        df_merge2,
+        left_on=['Centro de operación base', 'Centro de operación debito', 'Unidad de negocio debito', 'Auxiliar de centro de costos debito'],
+        right_on=['CO', 'UGP', 'UN', 'CCOS'],
+        how='left'
+    )
+    df_propia_actualizado = pd.concat([df_propia1, df_propia2], ignore_index=True)
+    df_propia_actualizado['% Cartera Propia'] = df_propia_actualizado['% Cartera Propia'].fillna(0.0).astype(float)
+    for col in ['UGP', 'CO', 'UN', 'CCOS']:
+        if col in df_propia_actualizado.columns:
+            df_propia_actualizado.drop(columns=col, inplace=True)
+    from openpyxl.utils.dataframe import dataframe_to_rows
+    wb = load_workbook(file_path)
+    if 'Propia' in wb.sheetnames:
+        del wb['Propia']
+    ws = wb.create_sheet('Propia')
+    for r_idx, row in enumerate(dataframe_to_rows(df_propia_actualizado, index=False, header=True), 1):
+        for c_idx, value in enumerate(row, 1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=value)
+            if df_propia_actualizado.columns[c_idx - 1] == '% Cartera Propia' and r_idx > 1:
+                cell.number_format = '0.00%'
+    wb.save(file_path)
+    print(f"✅ Hoja 'Propia' actualizada con columna % Cartera Propia.")
+
+# Ejecutar la función para crear la hoja Propia
+crear_hoja_propia("Resultado_distribucion.xlsx")
+# Ejecutar la función para actualizar la hoja Propia con % Cartera Propia
+actualizar_porcentaje_propia("Resultado_distribucion.xlsx")
+
+# ================================
+# Crear hoja 'UGP' con ccos_base=660104 y estructura especial
+# ================================
+def crear_hoja_ugp(file_path):
+    df_sql = pd.read_excel(file_path, sheet_name="SQL_UN600", dtype=str).fillna("")
+    auxiliares = df_sql["auxiliar_codigo"].drop_duplicates().tolist()
+    columnas = [
+        "Auxiliar", "Centro de operación base", "Unidad de negocio base", "Auxiliar de centro de costos base",
+        "Auxiliar", "Centro de operación debito", "Unidad de negocio debito", "Auxiliar de centro de costos debito",
+        "Tercero del auxiliar débito",
+        "Auxiliar", "Centro de operación credito", "Unidad de negocio credito", "Auxiliar de centro de costos credito"
+    ]
+    filas = []
+    co_base = "020"
+    un = "600"
+    ccos_base = "660104"  # Fijo para UGP
+    cos = [str(i).zfill(3) for i in list(range(1, 20)) if i not in (14, 17)]
+    for aux in auxiliares:
+        # Para cada combinación de débito, para cada CO destino
+        for co_debito in cos + ["020"]:
+            for un_deb, ccos_deb in [
+                ("100", "110101"),
+                ("200", "220101"),
+                ("200", "220102"),
+                ("300", "330101"),
+                ("500", "550101"),
+                ("700", "770101"),
+                ("999", "990101"),
+                ("999", "990102"),
+                ("999", "990103"),
+                ("999", "990201"),
+                ("999", "990202"),
+                ("999", "990203"),
+                ("999", "990204"),
+                ("999", "990301"),
+            ]:
+                if un_deb == "999" and co_debito != "001":
+                    continue
+                filas.append([
+                    aux, co_base, un, ccos_base,
+                    aux, co_debito, un_deb, ccos_deb,
+                    "",  # Tercero del auxiliar débito vacío
+                    aux, co_base, un, ccos_base
+                ])
+        for un_deb, ccos_deb in [
+            ("100", "110101"),
+            ("200", "220101"),
+            ("300", "330101")
+        ]:
+            filas.append([
+                aux, co_base, un, ccos_base,
+                aux, "020", un_deb, ccos_deb,
+                "",
+                aux, co_base, un, ccos_base
+            ])
+    df_ugp = pd.DataFrame(filas, columns=columnas)
+    with pd.ExcelWriter(file_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+        df_ugp.to_excel(writer, index=False, sheet_name="UGP")
+    print(f"✅ Hoja 'UGP' creada con {len(df_ugp)} filas.")
+
+# Ejecutar la función para crear la hoja UGP
+crear_hoja_ugp("Resultado_distribucion.xlsx")
 
 
